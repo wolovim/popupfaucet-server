@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from web3 import Web3, EthereumTesterProvider
 import os
 import time
+import json
 
 app = Flask(__name__)
 
@@ -12,8 +13,8 @@ app = Flask(__name__)
 w3 = Web3(EthereumTesterProvider())
 
 # Check connection
-# if not w3.is_connected():
-#     raise ConnectionError("Failed to connect to the Ethereum network")
+if not w3.is_connected():
+    raise ConnectionError("Failed to connect to the Ethereum network")
 
 # Contract details
 # contract_address = 'YOUR_CONTRACT_ADDRESS'  # Replace with your contract address
@@ -24,6 +25,20 @@ w3 = Web3(EthereumTesterProvider())
 
 # Initialize contract
 # contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+
+with open("artifacts.json") as f:
+    artifacts = json.load(f)
+
+contract_factory = w3.eth.contract(
+    abi=artifacts["abi"], bytecode=artifacts["deploymentBytecode"]["bytecode"]
+)
+tx_hash = contract_factory.constructor(w3.eth.accounts[0]).transact(
+    {"from": w3.eth.accounts[0]}
+)
+contract = w3.eth.contract(
+    address=w3.eth.get_transaction_receipt(tx_hash)["contractAddress"],
+    abi=artifacts["abi"],
+)
 
 
 @app.route("/availability", methods=["GET"])
@@ -70,11 +85,11 @@ def create_faucet():
 
     try:
         # Encode event code
-        encoded_event_code = w3.solidity_keccak(['string'], [event_code]).hex()
+        encoded_event_code = w3.solidity_keccak(["string"], [event_code]).hex()
         print(f"encoded_event_code: {encoded_event_code}")
 
         # Convert ether amount to Wei
-        wei_amount = w3.to_wei(ether_amount, 'ether')
+        wei_amount = w3.to_wei(ether_amount, "ether")
         print(f"wei_amount: {wei_amount}")
 
         # Build transaction
