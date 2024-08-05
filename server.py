@@ -74,42 +74,69 @@ def check_status():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/seeder-funded", methods=["POST"])
+def check_seeder_funded():
+    data = request.json
+    pk = data.get("pk")
+    acct = w3.eth.account.from_key(pk)
+
+    # mock transfer
+    w3.eth.send_transaction(
+        {
+            "from": w3.eth.accounts[1],
+            "to": acct.address,
+            "value": w3.to_wei("1", "ether"),
+        }
+    )
+
+    # Convert ether amount to Wei
+    wei_amount = w3.eth.get_balance(acct.address)
+    print(f"wei_amount: {wei_amount}")
+
+    if wei_amount == 0:
+        return jsonify({"error": "Insufficient balance"}), 400
+    else:
+        return jsonify({"balance": wei_amount}), 200
+
+
 @app.route("/create-faucet", methods=["POST"])
 def create_faucet():
     data = request.json
     event_code = data.get("event_code")
-    ether_amount = data.get("ether_amount")
+    pk = data.get("pk")
+    acct = w3.eth.account.from_key(pk)
 
-    if not event_code or not ether_amount:
-        return jsonify({"error": "Event code and ether amount are required"}), 400
+    if not event_code:
+        return jsonify({"error": "Event code is required"}), 400
 
     try:
         # Encode event code
-        encoded_event_code = w3.solidity_keccak(["string"], [event_code]).hex()
-        print(f"encoded_event_code: {encoded_event_code}")
-
-        # Convert ether amount to Wei
-        wei_amount = w3.to_wei(ether_amount, "ether")
-        print(f"wei_amount: {wei_amount}")
+        # encoded_event_code = w3.solidity_keccak(["string"], [event_code]).hex()
+        # print(f"encoded_event_code: {encoded_event_code}")
 
         # Build transaction
-        # txn = contract.functions.createFaucet(encoded_event_code).buildTransaction({
-        #     'chainId': 1,  # Mainnet
-        #     'gas': 2000000,
-        #     'gasPrice': w3.toWei('50', 'gwei'),
-        #     'nonce': w3.eth.getTransactionCount(wallet_address),
-        #     'value': wei_amount,
-        # })
+        gas_limit = contract.functions.seedFunds(event_code).estimate_gas(
+            {"from": acct.address, "value": 1}
+        )
+        gas_price = w3.to_wei("5", "gwei")
+        gas_cost = gas_limit * gas_price
+        value = w3.eth.get_balance(acct.address) - gas_cost
+        txn = contract.functions.seedFunds(event_code).build_transaction(
+            {
+                "gas": gas_limit,
+                "gasPrice": gas_price,
+                "nonce": 0,
+                "value": value,
+            }
+        )
 
         # Sign transaction
-        # signed_txn = w3.eth.account.signTransaction(txn, private_key=private_key)
+        signed_txn = w3.eth.account.sign_transaction(txn, private_key=pk)
 
         # Send transaction
-        # txn_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+        txn_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
 
-        # Mock transaction hash
-        txn_hash = "0x1234567890abcdef"
-        return jsonify({"txn_hash": txn_hash}), 200
+        return jsonify({"txn_hash": txn_hash.hex()}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

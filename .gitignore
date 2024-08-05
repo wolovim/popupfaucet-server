@@ -11,3 +11,4 @@ wheels/
 
 # misc
 .DS_Store
+.env
