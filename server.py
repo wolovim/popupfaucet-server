@@ -7,16 +7,14 @@ import json
 
 app = Flask(__name__)
 
-DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'true'
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Initialize Web3
-# rpc_url = '...'
-# w3 = Web3(Web3.HTTPProvider(rpc_url))
 w3_tester = Web3(EthereumTesterProvider())
-w3_op_sepolia = Web3(HTTPProvider("https://rpc.ankr.com/optimism_sepolia"))
+w3_op_sepolia = Web3(HTTPProvider(os.getenv('RPC_URL'))
 
 # Deployments:
-ADMIN_PK = os.getenv('POPUPFAUCET_ADMIN_PK')
+ADMIN_PK = os.getenv("POPUPFAUCET_ADMIN_PK")
 DEPLOY_OP_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
 DEPLOY_BASE_SEPOLIA = ""
 DEPLOY_SEPOLIA = ""
@@ -78,10 +76,10 @@ def check_status():
         print(f"event_name_unclaimed: {event_name_unclaimed}")
         if event_name_unclaimed:
             return jsonify({"event_exists": False, "available_ether": 0}), 200
-        
+
         funds_available = contract.functions.eventFundsAvailable(event_code).call()
         print(f"funds_available: {funds_available}")
-        ether_in_wei = w3.from_wei(funds_available, 'ether')
+        ether_in_wei = w3.from_wei(funds_available, "ether")
         return jsonify({"event_exists": True, "available_ether": ether_in_wei}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -131,23 +129,27 @@ def create_faucet():
         return jsonify({"error": "Event code is required"}), 400
 
     try:
-        gas_limit = contract.functions.seedFunds(event_code).estimate_gas(
-            {"from": acct.address, "value": 1}
-        )
-        gas_price = w3.to_wei("0.2", "gwei")
-        gas_cost = gas_limit * gas_price
-        value = w3.eth.get_balance(acct.address) - gas_cost
+        gas_limit = 74338
+        # gas_limit = contract.functions.seedFunds(event_code).estimate_gas( {"type": 2, "from": acct.address, "value": 1}
+        # )
+        # gas_price = w3.to_wei("0.2", "gwei")
+        # gas_cost = gas_limit * gas_price
+        value = int(w3.eth.get_balance(acct.address) * 0.9)
         tx_params = {
-            "gas": gas_limit + 1000,
-            "gasPrice": gas_price,
+            "type": 2,
             "nonce": 0,
+            "gas": gas_limit,
             "value": value,
+            "maxPriorityFeePerGas": 1000,
+            "maxFeePerGas": 1000,
         }
-        # TODO: debug overly expensive tx
+
         tx = contract.functions.seedFunds(event_code).build_transaction(tx_params)
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        # TODO: anything leftover? send to admin
+
         return jsonify({"tx_receipt": tx_receipt["transactionHash"]}), 200
     except Exception as e:
         print(e)
@@ -223,7 +225,9 @@ def claim_faucet():
             # eth-tester
             tx_hash = w3.eth.send_transaction(tx)
         else:
-            signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin_account.key)
+            signed_tx = w3.eth.account.sign_transaction(
+                tx, private_key=admin_account.key
+            )
             tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         return jsonify({"tx_hash": tx_hash.hex()}), 200
