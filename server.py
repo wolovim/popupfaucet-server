@@ -20,7 +20,7 @@ if not w3.is_connected():
 # contract_address = 'YOUR_CONTRACT_ADDRESS'  # Replace with your contract address
 # contract_abi = 'YOUR_CONTRACT_ABI'  # Replace with your contract ABI
 
-# wallet_address = w3.eth.accounts[0]  # eth-tester
+admin_account = w3.eth.accounts[0]  # eth-tester
 # private_key = os.getenv('PRIVATE_KEY')  # Load private key from environment variable
 
 # Initialize contract
@@ -118,7 +118,7 @@ def create_faucet():
         gas_price = w3.to_wei("5", "gwei")
         gas_cost = gas_limit * gas_price
         value = w3.eth.get_balance(acct.address) - gas_cost
-        txn = contract.functions.seedFunds(event_code).build_transaction(
+        tx = contract.functions.seedFunds(event_code).build_transaction(
             {
                 "gas": gas_limit,
                 "gasPrice": gas_price,
@@ -128,12 +128,12 @@ def create_faucet():
         )
 
         # Sign transaction
-        signed_txn = w3.eth.account.sign_transaction(txn, private_key=pk)
+        signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
 
         # Send transaction
-        txn_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
-        return jsonify({"txn_hash": txn_hash.hex()}), 200
+        return jsonify({"tx_hash": tx_hash.hex()}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -155,7 +155,7 @@ def top_up_faucet():
         # wei_amount = w3.toWei(ether_amount, 'ether')
 
         # Build transaction
-        # txn = contract.functions.topUpFaucet(encoded_event_code).buildTransaction({
+        # tx = contract.functions.topUpFaucet(encoded_event_code).buildTransaction({
         #     'chainId': 1,  # Mainnet
         #     'gas': 2000000,
         #     'gasPrice': w3.toWei('50', 'gwei'),
@@ -164,14 +164,14 @@ def top_up_faucet():
         # })
 
         # Sign transaction
-        # signed_txn = w3.eth.account.signTransaction(txn, private_key=private_key)
+        # signed_tx = w3.eth.account.signTransaction(tx, private_key=private_key)
 
         # Send transaction
-        # txn_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+        # tx_hash = w3.eth.sendRawTransaction(signed_tx.rawTransaction)
 
         # Mock transaction hash
-        txn_hash = "0xabcdef1234567890"
-        return jsonify({"txn_hash": txn_hash}), 200
+        tx_hash = "0xabcdef1234567890"
+        return jsonify({"tx_hash": tx_hash}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -188,26 +188,28 @@ def claim_faucet():
         return jsonify({"error": "Address is required"}), 400
 
     try:
-        # Encode event code
-        # encoded_event_code = w3.solidityKeccak(['string'], [event_code]).hex()
-
         # Build transaction
-        # txn = contract.functions.claimFaucet(encoded_event_code).buildTransaction({
-        #     'chainId': 1,  # Mainnet
-        #     'gas': 2000000,
-        #     'gasPrice': w3.toWei('50', 'gwei'),
-        #     'nonce': w3.eth.getTransactionCount(wallet_address),
-        # })
+        gas_limit = contract.functions.drip(address, event_code).estimate_gas(
+            {"from": admin_account}
+        )
+        tx = contract.functions.seedFunds(event_code).build_transaction(
+            {
+                "gas": gas_limit,
+                "gasPrice": w3.to_wei("5", "gwei"),
+                "nonce": w3.eth.get_transaction_count(admin_account),
+            }
+        )
 
         # Sign transaction
-        # signed_txn = w3.eth.account.signTransaction(txn, private_key=private_key)
+        # signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin_account.key)
 
         # Send transaction
-        # txn_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+        # tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
-        # Mock transaction hash
-        txn_hash = "0xfeedfacecafebeef"
-        return jsonify({"txn_hash": txn_hash}), 200
+        # Mock transaction via eth-tester
+        tx_hash = w3.eth.send_transaction(tx)
+
+        return jsonify({"tx_hash": tx_hash.hex()}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
