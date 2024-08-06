@@ -47,11 +47,8 @@ def check_availability():
     if not event_code:
         return jsonify({"error": "event_code parameter is required"}), 400
 
-    # encoded_event_code = w3.solidityKeccak(['string'], [event_code]).hex()
     try:
-        # available = contract.functions.yourMappingFunction(encoded_event_code).call()
-        # Mock value
-        is_available = True
+        is_available = contract.functions.eventNameAvailable(event_code).call()
         return jsonify({"event_code": event_code, "is_available": is_available}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -62,14 +59,14 @@ def check_status():
     event_code = request.args.get("event_code")
     if not event_code:
         return jsonify({"error": "event_code parameter is required"}), 400
-
-    # encoded_event_code = w3.solidityKeccak(['string'], [event_code]).hex()
     try:
-        # available_ether = contract.functions.yourMappingFunction(encoded_event_code).call()
-        # ether_in_wei = w3.fromWei(available_ether, 'ether')
-        # Mock value
-        ether_in_wei = 1.5
-        return jsonify({"event_code": event_code, "available_ether": ether_in_wei}), 200
+        event_name_unclaimed = contract.functions.eventNameAvailable(event_code).call()
+        if event_name_unclaimed:
+            return jsonify({"event_exists": False, "available_ether": 0}), 200
+        
+        funds_available = contract.functions.eventFundsAvailable(event_code).call()
+        ether_in_wei = w3.from_wei(funds_available, 'ether')
+        return jsonify({"event_exists": True, "available_ether": ether_in_wei}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
