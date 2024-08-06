@@ -1,44 +1,55 @@
 from flask import Flask, request, jsonify
 
-from web3 import Web3, EthereumTesterProvider
+from web3 import HTTPProvider, Web3, EthereumTesterProvider
 import os
 import time
 import json
 
 app = Flask(__name__)
 
+DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'true'
+
 # Initialize Web3
 # rpc_url = '...'
 # w3 = Web3(Web3.HTTPProvider(rpc_url))
-w3 = Web3(EthereumTesterProvider())
+w3_tester = Web3(EthereumTesterProvider())
+w3_op_sepolia = Web3(HTTPProvider("https://rpc.ankr.com/optimism_sepolia"))
 
-# Check connection
-if not w3.is_connected():
-    raise ConnectionError("Failed to connect to the Ethereum network")
+# Deployments:
+ADMIN_PK = os.getenv('POPUPFAUCET_ADMIN_PK')
+DEPLOY_OP_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
+DEPLOY_BASE_SEPOLIA = ""
+DEPLOY_SEPOLIA = ""
 
-# Contract details
-# contract_address = 'YOUR_CONTRACT_ADDRESS'  # Replace with your contract address
-# contract_abi = 'YOUR_CONTRACT_ABI'  # Replace with your contract ABI
-
-admin_account = w3.eth.accounts[0]  # eth-tester
-# private_key = os.getenv('PRIVATE_KEY')  # Load private key from environment variable
-
-# Initialize contract
-# contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
 with open("artifacts.json") as f:
     artifacts = json.load(f)
 
-contract_factory = w3.eth.contract(
-    abi=artifacts["abi"], bytecode=artifacts["deploymentBytecode"]["bytecode"]
-)
-tx_hash = contract_factory.constructor(w3.eth.accounts[0]).transact(
-    {"from": w3.eth.accounts[0]}
-)
-contract = w3.eth.contract(
-    address=w3.eth.get_transaction_receipt(tx_hash)["contractAddress"],
-    abi=artifacts["abi"],
-)
+# for local (eth-tester) testing:
+if DEV_MODE:
+    w3 = w3_tester
+    admin_account = w3.eth.accounts[0]
+    contract_factory = w3.eth.contract(
+        abi=artifacts["abi"], bytecode=artifacts["deploymentBytecode"]["bytecode"]
+    )
+    tx_hash = contract_factory.constructor(admin_account).transact(
+        {"from": admin_account}
+    )
+    contract = w3.eth.contract(
+        address=w3.eth.get_transaction_receipt(tx_hash)["contractAddress"],
+        abi=artifacts["abi"],
+    )
+else:
+    w3 = w3_op_sepolia
+    contract = w3.eth.contract(
+        address=DEPLOY_OP_SEPOLIA,
+        abi=artifacts["abi"],
+    )
+    admin_account = w3.eth.account.from_key(ADMIN_PK)
+
+# Check connection
+if not w3.is_connected():
+    raise ConnectionError("Failed to connect to the network")
 
 
 @app.route("/availability", methods=["GET"])
@@ -59,12 +70,17 @@ def check_status():
     event_code = request.args.get("event_code")
     if not event_code:
         return jsonify({"error": "event_code parameter is required"}), 400
+    w3 = w3_op_sepolia
+    if DEV_MODE:
+        w3 = w3_tester
     try:
         event_name_unclaimed = contract.functions.eventNameAvailable(event_code).call()
+        print(f"event_name_unclaimed: {event_name_unclaimed}")
         if event_name_unclaimed:
             return jsonify({"event_exists": False, "available_ether": 0}), 200
         
         funds_available = contract.functions.eventFundsAvailable(event_code).call()
+        print(f"funds_available: {funds_available}")
         ether_in_wei = w3.from_wei(funds_available, 'ether')
         return jsonify({"event_exists": True, "available_ether": ether_in_wei}), 200
     except Exception as e:
@@ -75,16 +91,20 @@ def check_status():
 def check_seeder_funded():
     data = request.json
     pk = data.get("pk")
+    w3 = w3_op_sepolia
+    if DEV_MODE:
+        w3 = w3_tester
     acct = w3.eth.account.from_key(pk)
 
-    # mock transfer
-    w3.eth.send_transaction(
-        {
-            "from": w3.eth.accounts[1],
-            "to": acct.address,
-            "value": w3.to_wei("1", "ether"),
-        }
-    )
+    if DEV_MODE:
+        # mock transfer
+        w3.eth.send_transaction(
+            {
+                "from": w3.eth.accounts[1],
+                "to": acct.address,
+                "value": w3.to_wei("1", "ether"),
+            }
+        )
 
     # Convert ether amount to Wei
     wei_amount = w3.eth.get_balance(acct.address)
@@ -101,40 +121,36 @@ def create_faucet():
     data = request.json
     event_code = data.get("event_code")
     pk = data.get("pk")
+    # network = data.get("network")
+    w3 = w3_op_sepolia
+    if DEV_MODE:
+        w3 = w3_tester
     acct = w3.eth.account.from_key(pk)
 
     if not event_code:
         return jsonify({"error": "Event code is required"}), 400
 
     try:
-        # Encode event code
-        # encoded_event_code = w3.solidity_keccak(["string"], [event_code]).hex()
-        # print(f"encoded_event_code: {encoded_event_code}")
-
-        # Build transaction
         gas_limit = contract.functions.seedFunds(event_code).estimate_gas(
             {"from": acct.address, "value": 1}
         )
-        gas_price = w3.to_wei("5", "gwei")
+        gas_price = w3.to_wei("0.2", "gwei")
         gas_cost = gas_limit * gas_price
         value = w3.eth.get_balance(acct.address) - gas_cost
-        tx = contract.functions.seedFunds(event_code).build_transaction(
-            {
-                "gas": gas_limit,
-                "gasPrice": gas_price,
-                "nonce": 0,
-                "value": value,
-            }
-        )
-
-        # Sign transaction
+        tx_params = {
+            "gas": gas_limit + 1000,
+            "gasPrice": gas_price,
+            "nonce": 0,
+            "value": value,
+        }
+        # TODO: debug overly expensive tx
+        tx = contract.functions.seedFunds(event_code).build_transaction(tx_params)
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
-
-        # Send transaction
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-
-        return jsonify({"tx_hash": tx_hash.hex()}), 200
+        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        return jsonify({"tx_receipt": tx_receipt["transactionHash"]}), 200
     except Exception as e:
+        print(e)
         return jsonify({"error": str(e)}), 500
 
 
@@ -181,6 +197,9 @@ def claim_faucet():
     data = request.json
     event_code = data.get("event_code")
     address = data.get("address")
+    w3 = w3_op_sepolia
+    if DEV_MODE:
+        w3 = w3_tester
 
     if not event_code:
         return jsonify({"error": "Event code is required"}), 400
@@ -200,14 +219,12 @@ def claim_faucet():
             }
         )
 
-        # Sign transaction
-        # signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin_account.key)
-
-        # Send transaction
-        # tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-
-        # Mock transaction via eth-tester
-        tx_hash = w3.eth.send_transaction(tx)
+        if DEV_MODE:
+            # eth-tester
+            tx_hash = w3.eth.send_transaction(tx)
+        else:
+            signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin_account.key)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         return jsonify({"tx_hash": tx_hash.hex()}), 200
     except Exception as e:
