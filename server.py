@@ -4,21 +4,24 @@ from web3 import HTTPProvider, Web3, EthereumTesterProvider
 import os
 import time
 import json
+from dotenv import load_dotenv
 
 app = Flask(__name__)
+load_dotenv()
 
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Initialize Web3
 w3_tester = Web3(EthereumTesterProvider())
-w3_op_sepolia = Web3(HTTPProvider(os.getenv("RPC_URL")))
+w3_op_sepolia = Web3(HTTPProvider(os.getenv("OP_SEPOLIA_URL")))
+w3_base_sepolia = Web3(HTTPProvider(os.getenv("BASE_SEPOLIA_URL")))
+w3_sepolia = Web3(HTTPProvider(os.getenv("SEPOLIA_URL")))
 
 # Deployments:
 ADMIN_PK = os.getenv("POPUPFAUCET_ADMIN_PK")
 DEPLOY_OP_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
 DEPLOY_BASE_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
 DEPLOY_SEPOLIA = ""
-
 
 with open("artifacts.json") as f:
     artifacts = json.load(f)
@@ -37,22 +40,50 @@ if DEV_MODE:
         address=w3.eth.get_transaction_receipt(tx_hash)["contractAddress"],
         abi=artifacts["abi"],
     )
+
 else:
-    w3 = w3_op_sepolia
-    contract = w3.eth.contract(
+    w3o = w3_op_sepolia
+    w3b = w3_base_sepolia
+    w3s = w3_sepolia
+
+    admin_account = w3o.eth.account.from_key(ADMIN_PK)
+
+    o_contract = w3o.eth.contract(
         address=DEPLOY_OP_SEPOLIA,
         abi=artifacts["abi"],
     )
-    admin_account = w3.eth.account.from_key(ADMIN_PK)
+    b_contract = w3b.eth.contract(
+        address=DEPLOY_BASE_SEPOLIA,
+        abi=artifacts["abi"],
+    )
+    s_contract = w3s.eth.contract(
+        address=DEPLOY_BASE_SEPOLIA,
+        abi=artifacts["abi"],
+    )
 
-# Check connection
-if not w3.is_connected():
-    raise ConnectionError("Failed to connect to the network")
+    networks = {
+        "OP Sepolia": {"w3": w3o, "contract": o_contract},
+        "Base Sepolia": {"w3": w3b, "contract": b_contract},
+        "Sepolia": {"w3": w3s, "contract": s_contract}
+    }
+    # Check connection
+    for key in networks.keys():
+        if not networks[key]["w3"].is_connected():
+            raise ConnectionError(f"Failed to connect to {key} network")
+
+def get_w3_and_contract(network: str):
+    if DEV_MODE:
+        return w3, contract
+    return networks[network]["w3"], networks[network]["contract"]
 
 
 @app.route("/availability", methods=["GET"])
 def check_availability():
     event_code = request.args.get("event_code")
+    network = request.args.get("network")
+    _w3, contract = get_w3_and_contract(network)
+
+    print(_w3, contract)
     if not event_code:
         return jsonify({"error": "event_code parameter is required"}), 400
 
@@ -66,11 +97,12 @@ def check_availability():
 @app.route("/status", methods=["GET"])
 def check_status():
     event_code = request.args.get("event_code")
+    network = request.args.get("network")
+    w3, contract = get_w3_and_contract(network)
+    print(w3, contract)
     if not event_code:
         return jsonify({"error": "event_code parameter is required"}), 400
-    w3 = w3_op_sepolia
-    if DEV_MODE:
-        w3 = w3_tester
+
     try:
         event_name_unclaimed = contract.functions.eventNameAvailable(event_code).call()
         print(f"event_name_unclaimed: {event_name_unclaimed}")
@@ -89,9 +121,8 @@ def check_status():
 def check_seeder_funded():
     data = request.json
     pk = data.get("pk")
-    w3 = w3_op_sepolia
-    if DEV_MODE:
-        w3 = w3_tester
+    network = data.get("network")
+    w3, _contract = get_w3_and_contract(network)
     acct = w3.eth.account.from_key(pk)
 
     if DEV_MODE:
@@ -118,11 +149,9 @@ def check_seeder_funded():
 def create_faucet():
     data = request.json
     event_code = data.get("event_code")
+    network = data.get("network")
+    w3, contract = get_w3_and_contract(network)
     pk = data.get("pk")
-    # network = data.get("network")
-    w3 = w3_op_sepolia
-    if DEV_MODE:
-        w3 = w3_tester
     acct = w3.eth.account.from_key(pk)
 
     if not event_code:
@@ -160,6 +189,8 @@ def create_faucet():
 def top_up_faucet():
     data = request.json
     event_code = data.get("event_code")
+    network = request.args.get("network")
+    w3, contract = get_w3_and_contract(network)
     ether_amount = data.get("ether_amount")
 
     if not event_code or not ether_amount:
@@ -198,10 +229,9 @@ def top_up_faucet():
 def claim_faucet():
     data = request.json
     event_code = data.get("event_code")
+    network = request.args.get("network")
+    w3, contract = get_w3_and_contract(network)
     address = data.get("address")
-    w3 = w3_op_sepolia
-    if DEV_MODE:
-        w3 = w3_tester
 
     if not event_code:
         return jsonify({"error": "Event code is required"}), 400
