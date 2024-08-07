@@ -11,7 +11,7 @@ DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Initialize Web3
 w3_tester = Web3(EthereumTesterProvider())
-w3_op_sepolia = Web3(HTTPProvider(os.getenv('RPC_URL'))
+w3_op_sepolia = Web3(HTTPProvider(os.getenv('RPC_URL')))
 
 # Deployments:
 ADMIN_PK = os.getenv("POPUPFAUCET_ADMIN_PK")
@@ -209,14 +209,11 @@ def claim_faucet():
         return jsonify({"error": "Address is required"}), 400
 
     try:
-        # Build transaction
         gas_limit = contract.functions.drip(address, event_code).estimate_gas(
             {"from": admin_account}
         )
         tx = contract.functions.seedFunds(event_code).build_transaction(
             {
-                "gas": gas_limit,
-                "gasPrice": w3.to_wei("5", "gwei"),
                 "nonce": w3.eth.get_transaction_count(admin_account),
             }
         )
@@ -229,8 +226,9 @@ def claim_faucet():
                 tx, private_key=admin_account.key
             )
             tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+            tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
-        return jsonify({"tx_hash": tx_hash.hex()}), 200
+        return jsonify({"tx_hash": tx_receipt["transactionHash"]}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
