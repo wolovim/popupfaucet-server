@@ -21,7 +21,7 @@ w3_sepolia = Web3(HTTPProvider(os.getenv("SEPOLIA_URL")))
 ADMIN_PK = os.getenv("POPUPFAUCET_ADMIN_PK")
 DEPLOY_OP_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
 DEPLOY_BASE_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
-DEPLOY_SEPOLIA = ""
+DEPLOY_SEPOLIA = "0xc5cDa98Ac108f97cA7971311267d0E7b08A6Fd44"
 
 with open("artifacts.json") as f:
     artifacts = json.load(f)
@@ -57,7 +57,7 @@ else:
         abi=artifacts["abi"],
     )
     s_contract = w3s.eth.contract(
-        address=DEPLOY_BASE_SEPOLIA,
+        address=DEPLOY_SEPOLIA,
         abi=artifacts["abi"],
     )
 
