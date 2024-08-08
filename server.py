@@ -170,7 +170,7 @@ def create_faucet():
             "gas": gas_limit,
             "value": value,
             "maxPriorityFeePerGas": 1000,
-            "maxFeePerGas": 1000,
+            "maxFeePerGas": w3.to_wei("1", "gwei"),
         }
 
         tx = contract.functions.seedFunds(event_code).build_transaction(tx_params)
@@ -179,7 +179,7 @@ def create_faucet():
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         # TODO: anything leftover? send to admin
 
-        return jsonify({"tx_receipt": tx_receipt["transactionHash"]}), 200
+        return jsonify({"tx_receipt": tx_receipt["transactionHash"].to_0x_hex()}), 200
     except Exception as e:
         print(e)
         return jsonify({"error": str(e)}), 500

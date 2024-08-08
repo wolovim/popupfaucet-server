@@ -12,4 +12,4 @@ wheels/
 # misc
 .DS_Store
 .env
-.python_version
+.python-version
