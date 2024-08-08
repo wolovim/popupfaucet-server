@@ -64,12 +64,13 @@ else:
     networks = {
         "OP Sepolia": {"w3": w3o, "contract": o_contract},
         "Base Sepolia": {"w3": w3b, "contract": b_contract},
-        "Sepolia": {"w3": w3s, "contract": s_contract}
+        "Sepolia": {"w3": w3s, "contract": s_contract},
     }
     # Check connection
     for key in networks.keys():
         if not networks[key]["w3"].is_connected():
             raise ConnectionError(f"Failed to connect to {key} network")
+
 
 def get_w3_and_contract(network: str):
     if DEV_MODE:
@@ -185,42 +186,43 @@ def create_faucet():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/top-up-faucet", methods=["POST"])
+@app.route("/top-up", methods=["POST"])
 def top_up_faucet():
     data = request.json
     event_code = data.get("event_code")
-    network = request.args.get("network")
+    network = data.get("network")
+    pk = data.get("pk")
     w3, contract = get_w3_and_contract(network)
-    ether_amount = data.get("ether_amount")
 
-    if not event_code or not ether_amount:
-        return jsonify({"error": "Event code and ether amount are required"}), 400
+    if not event_code or not pk or not network:
+        return jsonify({"error": "Event code, network, and pk are required"}), 400
+
+    if DEV_MODE:
+        w3 = w3_tester
+
+    acct = w3.eth.account.from_key(pk)
 
     try:
-        # Encode event code
-        # encoded_event_code = w3.solidityKeccak(['string'], [event_code]).hex()
-
-        # Convert ether amount to Wei
-        # wei_amount = w3.toWei(ether_amount, 'ether')
+        value = int(w3.eth.get_balance(acct.address) * 0.9)
 
         # Build transaction
-        # tx = contract.functions.topUpFaucet(encoded_event_code).buildTransaction({
-        #     'chainId': 1,  # Mainnet
-        #     'gas': 2000000,
-        #     'gasPrice': w3.toWei('50', 'gwei'),
-        #     'nonce': w3.eth.getTransactionCount(wallet_address),
-        #     'value': wei_amount,
-        # })
+        tx = contract.functions.topUp(event_code).build_transaction(
+            {
+                "maxFeePerGas": w3.to_wei(1, "gwei"),
+                "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
+                "nonce": w3.eth.get_transaction_count(acct.address),
+                "value": value,
+            }
+        )
 
         # Sign transaction
-        # signed_tx = w3.eth.account.signTransaction(tx, private_key=private_key)
+        signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
 
         # Send transaction
-        # tx_hash = w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx = w3.eth.wait_for_transaction_receipt(tx_hash)
 
-        # Mock transaction hash
-        tx_hash = "0xabcdef1234567890"
-        return jsonify({"tx_hash": tx_hash}), 200
+        return jsonify({"tx_hash": tx["transactionHash"].to_0x_hex()}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -244,7 +246,7 @@ def claim_faucet():
                 {"nonce": w3.eth.get_transaction_count(admin_account)}
             )
             tx_hash = w3.eth.send_transaction(tx)
-            receipt_hash = tx_hash.hex()
+            receipt_hash = tx_hash.to_0x_hex()
         else:
             tx = contract.functions.drip(address, event_code).build_transaction(
                 {"nonce": w3.eth.get_transaction_count(admin_account.address)}
@@ -254,8 +256,8 @@ def claim_faucet():
             )
             tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-            receipt_hash = tx_receipt["transactionHash"]
-        return jsonify({"tx_hash": receipt_hash.hex()}), 200
+            receipt_hash = tx_receipt["transactionHash"].to_0x_hex()
+        return jsonify({"tx_hash": receipt_hash}), 200
     except Exception as e:
         print(e)
         return jsonify({"error": str(e)}), 500
