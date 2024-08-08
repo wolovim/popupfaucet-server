@@ -1,5 +1,6 @@
-flask>=3.0.0
-web3==7.0.0b9
+python-dotenv
 eth-tester
-py-evm
+flask>=3.0.0
 gunicorn
+py-evm
+web3==7.0.0b9
