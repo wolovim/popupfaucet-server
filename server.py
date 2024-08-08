@@ -229,7 +229,7 @@ def top_up_faucet():
 def claim_faucet():
     data = request.json
     event_code = data.get("event_code")
-    network = request.args.get("network")
+    network = data.get("network")
     w3, contract = get_w3_and_contract(network)
     address = data.get("address")
 
