@@ -160,10 +160,6 @@ def create_faucet():
 
     try:
         gas_limit = 74338
-        # gas_limit = contract.functions.seedFunds(event_code).estimate_gas( {"type": 2, "from": acct.address, "value": 1}
-        # )
-        # gas_price = w3.to_wei("0.2", "gwei")
-        # gas_cost = gas_limit * gas_price
         value = int(w3.eth.get_balance(acct.address) * 0.9)
         tx_params = {
             "type": 2,
@@ -178,7 +174,7 @@ def create_faucet():
                 "maxFeePerGas": w3.to_wei(25, "gwei"),
                 "maxPriorityFeePerGas": w3.to_wei(2, "gwei"),
             }
-            tx_params = tx_params.update(gas_params)
+            tx_params.update(gas_params)
 
         tx = contract.functions.seedFunds(event_code).build_transaction(tx_params)
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
@@ -222,7 +218,7 @@ def top_up_faucet():
                 "maxFeePerGas": w3.to_wei(25, "gwei"),
                 "maxPriorityFeePerGas": w3.to_wei(2, "gwei"),
             }
-            tx_params = tx_params.update(gas_params)
+            tx_params.update(gas_params)
 
         # Build transaction
         tx = contract.functions.topUp(event_code).build_transaction(tx_params)
