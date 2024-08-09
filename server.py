@@ -177,10 +177,11 @@ def create_faucet():
         tx = contract.functions.seedFunds(event_code).build_transaction(tx_params)
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        print(f"tx_hash: {tx_hash}")
+        # tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         # TODO: anything leftover? send to admin
 
-        return jsonify({"tx_hash": tx_receipt["transactionHash"].to_0x_hex()}), 200
+        return jsonify({"tx_hash": tx_hash.to_0x_hex()}), 200
     except Exception as e:
         print(e)
         return jsonify({"error": str(e)}), 500
