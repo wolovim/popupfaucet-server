@@ -160,7 +160,7 @@ def create_faucet():
 
     try:
         gas_limit = 74338
-        value = int(w3.eth.get_balance(acct.address) * 0.9)
+        value = int(w3.eth.get_balance(acct.address) * 0.95)
         tx_params = {
             "type": 2,
             "nonce": 0,
@@ -206,7 +206,7 @@ def top_up_faucet():
     acct = w3.eth.account.from_key(pk)
 
     try:
-        value = int(w3.eth.get_balance(acct.address) * 0.9)
+        value = int(w3.eth.get_balance(acct.address) * 0.95)
         tx_params = {
             "maxFeePerGas": w3.to_wei(1, "gwei"),
             "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
