@@ -169,15 +169,21 @@ def create_faucet():
             "type": 2,
             "nonce": 0,
             "gas": gas_limit,
+            "maxFeePerGas": 1000,
+            "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
             "value": value,
-            "maxPriorityFeePerGas": 1000,
-            "maxFeePerGas": w3.to_wei("1", "gwei"),
         }
+        if network == "Sepolia":
+            gas_params = {
+                "maxFeePerGas": w3.to_wei(25, "gwei"),
+                "maxPriorityFeePerGas": w3.to_wei(2, "gwei"),
+            }
+            tx_params = tx_params.update(gas_params)
 
         tx = contract.functions.seedFunds(event_code).build_transaction(tx_params)
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        print(f"tx_hash: {tx_hash}")
+        print(f"tx_hash: {tx_hash.to_0x_hex()}")
         # tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         # TODO: anything leftover? send to admin
 
@@ -205,16 +211,21 @@ def top_up_faucet():
 
     try:
         value = int(w3.eth.get_balance(acct.address) * 0.9)
+        tx_params = {
+            "maxFeePerGas": w3.to_wei(1, "gwei"),
+            "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
+            "nonce": w3.eth.get_transaction_count(acct.address),
+            "value": value,
+        }
+        if network == "Sepolia":
+            gas_params = {
+                "maxFeePerGas": w3.to_wei(25, "gwei"),
+                "maxPriorityFeePerGas": w3.to_wei(2, "gwei"),
+            }
+            tx_params = tx_params.update(gas_params)
 
         # Build transaction
-        tx = contract.functions.topUp(event_code).build_transaction(
-            {
-                "maxFeePerGas": w3.to_wei(1, "gwei"),
-                "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
-                "nonce": w3.eth.get_transaction_count(acct.address),
-                "value": value,
-            }
-        )
+        tx = contract.functions.topUp(event_code).build_transaction(tx_params)
 
         # Sign transaction
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=pk)
