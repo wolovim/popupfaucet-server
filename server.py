@@ -82,9 +82,8 @@ def get_w3_and_contract(network: str):
 def check_availability():
     event_code = request.args.get("event_code")
     network = request.args.get("network")
-    _w3, contract = get_w3_and_contract(network)
+    _, contract = get_w3_and_contract(network)
 
-    print(_w3, contract)
     if not event_code:
         return jsonify({"error": "event_code parameter is required"}), 400
 
@@ -92,6 +91,7 @@ def check_availability():
         is_available = contract.functions.eventNameAvailable(event_code).call()
         return jsonify({"event_code": event_code, "is_available": is_available}), 200
     except Exception as e:
+        print(e)
         return jsonify({"error": str(e)}), 500
 
 
