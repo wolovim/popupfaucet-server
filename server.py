@@ -165,7 +165,7 @@ def create_faucet():
             "type": 2,
             "nonce": 0,
             "gas": gas_limit,
-            "maxFeePerGas": 1000,
+            "maxFeePerGas": w3.to_wei(1, "gwei"),
             "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
             "value": value,
         }
