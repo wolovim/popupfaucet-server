@@ -123,11 +123,11 @@ def check_seeder_funded():
     data = request.json
     pk = data.get("pk")
     network = data.get("network")
-    w3, _contract = get_w3_and_contract(network)
+    w3, _ = get_w3_and_contract(network)
     acct = w3.eth.account.from_key(pk)
 
     if DEV_MODE:
-        # mock transfer
+        # auto-seed with eth-tester
         w3.eth.send_transaction(
             {
                 "from": w3.eth.accounts[1],
@@ -138,7 +138,7 @@ def check_seeder_funded():
 
     # Convert ether amount to Wei
     wei_amount = w3.eth.get_balance(acct.address)
-    print(f"wei_amount: {wei_amount}")
+    print(f"network: {network}, address: {acct.address}, wei_amount: {wei_amount}")
 
     if wei_amount == 0:
         return jsonify({"error": "Insufficient balance"}), 400
