@@ -1,9 +1,7 @@
-from flask import Flask, request, jsonify
-
-from web3 import HTTPProvider, Web3, EthereumTesterProvider
 import os
-import time
 import json
+from flask import Flask, request, jsonify
+from web3 import HTTPProvider, Web3, EthereumTesterProvider
 from dotenv import load_dotenv
 
 app = Flask(__name__)
@@ -165,8 +163,8 @@ def create_faucet():
             "type": 2,
             "nonce": 0,
             "gas": gas_limit,
-            "maxFeePerGas": w3.to_wei(1, "gwei"),
-            "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
+            # "maxFeePerGas": w3.to_wei(1, "gwei"),
+            # "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
             "value": value,
         }
         if network == "Sepolia":
@@ -208,8 +206,9 @@ def top_up_faucet():
     try:
         value = int(w3.eth.get_balance(acct.address) * 0.95)
         tx_params = {
-            "maxFeePerGas": w3.to_wei(1, "gwei"),
-            "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
+            "type": 2,
+            # "maxFeePerGas": w3.to_wei(1, "gwei"),
+            # "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
             "nonce": w3.eth.get_transaction_count(acct.address),
             "value": value,
         }
@@ -256,8 +255,13 @@ def claim_faucet():
             tx_hash = w3.eth.send_transaction(tx)
             receipt_hash = tx_hash.to_0x_hex()
         else:
+            gas_limit = 50000
             tx = contract.functions.drip(address, event_code).build_transaction(
-                {"nonce": w3.eth.get_transaction_count(admin_account.address)}
+                {
+                    "type": 2,
+                    "gas": gas_limit,
+                    "nonce": w3.eth.get_transaction_count(admin_account.address)
+                }
             )
             signed_tx = w3.eth.account.sign_transaction(
                 tx, private_key=admin_account.key
