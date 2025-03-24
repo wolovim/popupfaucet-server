@@ -3,8 +3,10 @@ import json
 from flask import Flask, request, jsonify
 from web3 import HTTPProvider, Web3, EthereumTesterProvider
 from dotenv import load_dotenv
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 load_dotenv()
 
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
@@ -17,77 +19,59 @@ w3_sepolia = Web3(HTTPProvider(os.getenv("SEPOLIA_URL")))
 
 # Deployments:
 ADMIN_PK = os.getenv("POPUPFAUCET_ADMIN_PK")
-DEPLOY_OP_SEPOLIA = "0x5048aC6e3cf1476A6DeeF83BFBC7D9593d8Cfd8F"
-DEPLOY_BASE_SEPOLIA = "0xEE8F8eCDe01AEe6A589Be86A5150586639b8901F"
-DEPLOY_SEPOLIA = "0x20Ef4Dc0951d8E4a35bcBe05DD2Ca0b2B5aCc5B3"
+DEPLOY_OP_SEPOLIA = os.getenv("OP_SEPOLIA_FAUCET_ADDRESS")
+DEPLOY_BASE_SEPOLIA = os.getenv("BASE_SEPOLIA_FAUCET_ADDRESS")
+DEPLOY_SEPOLIA = os.getenv("ETH_SEPOLIA_FAUCET_ADDRESS")
 
 with open("artifacts.json") as f:
     artifacts = json.load(f)
 
-# for local (eth-tester) testing:
-if DEV_MODE:
-    w3 = w3_tester
-    admin_account = w3.eth.accounts[0]
-    contract_factory = w3.eth.contract(
-        abi=artifacts["abi"], bytecode=artifacts["deploymentBytecode"]["bytecode"]
-    )
-    tx_hash = contract_factory.constructor(admin_account).transact(
-        {"from": admin_account}
-    )
-    contract = w3.eth.contract(
-        address=w3.eth.get_transaction_receipt(tx_hash)["contractAddress"],
-        abi=artifacts["abi"],
-    )
+w3o = w3_op_sepolia
+w3b = w3_base_sepolia
+w3s = w3_sepolia
 
-else:
-    w3o = w3_op_sepolia
-    w3b = w3_base_sepolia
-    w3s = w3_sepolia
+admin_account = w3o.eth.account.from_key(ADMIN_PK)
 
-    admin_account = w3o.eth.account.from_key(ADMIN_PK)
+o_contract = w3o.eth.contract(
+    address=DEPLOY_OP_SEPOLIA,
+    abi=artifacts["abi"],
+)
+b_contract = w3b.eth.contract(
+    address=DEPLOY_BASE_SEPOLIA,
+    abi=artifacts["abi"],
+)
+s_contract = w3s.eth.contract(
+    address=DEPLOY_SEPOLIA,
+    abi=artifacts["abi"],
+)
 
-    o_contract = w3o.eth.contract(
-        address=DEPLOY_OP_SEPOLIA,
-        abi=artifacts["abi"],
-    )
-    b_contract = w3b.eth.contract(
-        address=DEPLOY_BASE_SEPOLIA,
-        abi=artifacts["abi"],
-    )
-    s_contract = w3s.eth.contract(
-        address=DEPLOY_SEPOLIA,
-        abi=artifacts["abi"],
-    )
-
-    networks = {
-        "OP Sepolia": {"w3": w3o, "contract": o_contract},
-        "Base Sepolia": {"w3": w3b, "contract": b_contract},
-        "Sepolia": {"w3": w3s, "contract": s_contract},
-    }
-    # Check connection
-    for key in networks.keys():
-        if not networks[key]["w3"].is_connected():
-            raise ConnectionError(f"Failed to connect to {key} network")
+networks = {
+    "optimism-sepolia": {"w3": w3o, "contract": o_contract},
+    "base-sepolia": {"w3": w3b, "contract": b_contract},
+    "sepolia": {"w3": w3s, "contract": s_contract},
+}
+# Check connection
+for key in networks.keys():
+    if not networks[key]["w3"].is_connected():
+        raise ConnectionError(f"Failed to connect to {key} network")
 
 
 def get_w3_and_contract(network: str):
-    if DEV_MODE:
-        return w3, contract
     return networks[network]["w3"], networks[network]["contract"]
 
 
 @app.route("/availability", methods=["GET"])
 def check_availability():
-    event_code = request.args.get("event_code")
+    name = request.args.get("name")
     network = request.args.get("network")
     _, contract = get_w3_and_contract(network)
 
-    if not event_code:
-        return jsonify({"error": "event_code parameter is required"}), 400
+    if not name:
+        return jsonify({"error": "name parameter is required"}), 400
 
     try:
-        is_available = contract.functions.eventNameAvailable(event_code).call()
-        return jsonify({"event_code": event_code, "is_available": is_available}), 200
+        is_available = contract.functions.eventNameAvailable(name).call()
+        return jsonify({"name": name, "is_available": is_available}), 200
     except Exception as e:
         print(e)
         return jsonify({"error": str(e)}), 500
@@ -95,20 +79,20 @@ def check_availability():
 
 @app.route("/status", methods=["GET"])
 def check_status():
-    event_code = request.args.get("event_code")
+    name = request.args.get("name")
     network = request.args.get("network")
     w3, contract = get_w3_and_contract(network)
     print(w3, contract)
-    if not event_code:
-        return jsonify({"error": "event_code parameter is required"}), 400
+    if not name:
+        return jsonify({"error": "name parameter is required"}), 400
 
     try:
-        event_name_unclaimed = contract.functions.eventNameAvailable(event_code).call()
+        event_name_unclaimed = contract.functions.eventNameAvailable(name).call()
         print(f"event_name_unclaimed: {event_name_unclaimed}")
         if event_name_unclaimed:
             return jsonify({"event_exists": False, "available_ether": 0}), 200
 
-        funds_available = contract.functions.eventFundsAvailable(event_code).call()
+        funds_available = contract.functions.eventFundsAvailable(name).call()
         print(f"funds_available: {funds_available}")
         ether_in_wei = w3.from_wei(funds_available, "ether")
         return jsonify({"event_exists": True, "available_ether": ether_in_wei}), 200
@@ -161,8 +145,6 @@ def create_faucet():
         value = int(w3.eth.get_balance(acct.address) * 0.95)
         tx_params = {
             "type": 2,
-            "nonce": 0,
-            "gas": gas_limit,
             # "maxFeePerGas": w3.to_wei(1, "gwei"),
             # "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
             "value": value,
@@ -234,45 +216,47 @@ def top_up_faucet():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/claim-faucet", methods=["POST"])
-def claim_faucet():
+@app.route("/drip", methods=["POST"])
+def drip():
     data = request.json
-    event_code = data.get("event_code")
+    print(data)
+    name = data.get("name")
     network = data.get("network")
     w3, contract = get_w3_and_contract(network)
     address = data.get("address")
 
-    if not event_code:
-        return jsonify({"error": "Event code is required"}), 400
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
     if not address:
         return jsonify({"error": "Address is required"}), 400
 
     try:
-        if DEV_MODE:
-            tx = contract.functions.drip(address, event_code).build_transaction(
-                {"nonce": w3.eth.get_transaction_count(admin_account)}
-            )
-            tx_hash = w3.eth.send_transaction(tx)
-            receipt_hash = tx_hash.to_0x_hex()
-        else:
-            gas_limit = 50000
-            tx = contract.functions.drip(address, event_code).build_transaction(
-                {
-                    "type": 2,
-                    "gas": gas_limit,
-                    "nonce": w3.eth.get_transaction_count(admin_account.address)
-                }
-            )
-            signed_tx = w3.eth.account.sign_transaction(
-                tx, private_key=admin_account.key
-            )
-            tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-            tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-            receipt_hash = tx_receipt["transactionHash"].to_0x_hex()
+        # gas_limit = 50000
+        tx = contract.functions.drip(name, address).build_transaction(
+            {
+                "type": 2,
+                # "gas": gas_limit,
+                "nonce": w3.eth.get_transaction_count(admin_account.address)
+            }
+        )
+        signed_tx = w3.eth.account.sign_transaction(
+            tx, private_key=admin_account.key
+        )
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        receipt_hash = tx_receipt["transactionHash"].to_0x_hex()
         return jsonify({"tx_hash": receipt_hash}), 200
     except Exception as e:
-        print(e)
-        return jsonify({"error": str(e)}), 500
+        # Log the full error for debugging but don't send it to the client
+        print(f"Error in drip function: {str(e)}")
+        # Return a sanitized error message
+        error_message = "Failed to process drip request"
+        # You can add more specific error handling if needed
+        if "insufficient funds" in str(e).lower():
+            error_message = "Insufficient funds in faucet"
+        elif "gas required exceeds allowance" in str(e).lower():
+            error_message = "Gas estimation failed"
+        return jsonify({"error": error_message}), 500
 
 
 if __name__ == "__main__":

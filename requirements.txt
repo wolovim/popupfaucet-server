@@ -1,6 +1,7 @@
 python-dotenv
 eth-tester
 flask>=3.0.0
+flask-cors
 gunicorn
 py-evm
-web3==7.0.0b9
+web3==7.9.0
