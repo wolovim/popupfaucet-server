@@ -16,12 +16,14 @@ w3_tester = Web3(EthereumTesterProvider())
 w3_op_sepolia = Web3(HTTPProvider(os.getenv("OP_SEPOLIA_URL")))
 w3_base_sepolia = Web3(HTTPProvider(os.getenv("BASE_SEPOLIA_URL")))
 w3_sepolia = Web3(HTTPProvider(os.getenv("SEPOLIA_URL")))
+w3_hoodi = Web3(HTTPProvider(os.getenv("HOODI_URL")))
 
 # Deployments:
 ADMIN_PK = os.getenv("POPUPFAUCET_ADMIN_PK")
 DEPLOY_OP_SEPOLIA = os.getenv("OP_SEPOLIA_FAUCET_ADDRESS")
 DEPLOY_BASE_SEPOLIA = os.getenv("BASE_SEPOLIA_FAUCET_ADDRESS")
 DEPLOY_SEPOLIA = os.getenv("ETH_SEPOLIA_FAUCET_ADDRESS")
+DEPLOY_HOODI = os.getenv("ETH_HOODI_FAUCET_ADDRESS")
 
 with open("artifacts.json") as f:
     artifacts = json.load(f)
@@ -29,6 +31,7 @@ with open("artifacts.json") as f:
 w3o = w3_op_sepolia
 w3b = w3_base_sepolia
 w3s = w3_sepolia
+w3h = w3_hoodi
 
 admin_account = w3o.eth.account.from_key(ADMIN_PK)
 
@@ -44,16 +47,22 @@ s_contract = w3s.eth.contract(
     address=DEPLOY_SEPOLIA,
     abi=artifacts["abi"],
 )
+h_contract = w3h.eth.contract(
+    address=DEPLOY_HOODI,
+    abi=artifacts["abi"],
+)
 
 networks = {
     "optimism-sepolia": {"w3": w3o, "contract": o_contract},
     "base-sepolia": {"w3": w3b, "contract": b_contract},
     "sepolia": {"w3": w3s, "contract": s_contract},
+    "hoodi": {"w3": w3h, "contract": h_contract},
 }
 # Check connection
 for key in networks.keys():
     if not networks[key]["w3"].is_connected():
-        raise ConnectionError(f"Failed to connect to {key} network")
+        print(f"Failed to connect to {key} network")
+        # raise ConnectionError(f"Failed to connect to {key} network")
 
 
 def get_w3_and_contract(network: str):
